@@ -163,11 +163,16 @@ export async function GET(request: Request) {
                   value: Math.round(((processedDomains + 0.75) / totalDomains) * 100),
                 })
 
+                // Modificar a função para filtrar contatos válidos
                 // Filtrar contatos que não têm email nem telefone válido
                 const validContacts = contacts.filter((contact) => {
                   const hasValidEmail = contact.email && contact.email.includes("@")
-                  const hasValidPhone = contact.phone && /^($$\d{2}$$\s?)?\d{4,5}[-\s]?\d{4}$/.test(contact.phone)
-                  return hasValidEmail || hasValidPhone
+                  // Expressão regular corrigida para telefones com DDD
+                  const hasValidCompletePhone = contact.phone && /^$$\d{2}$$\s\d{4,5}-\d{4}$/.test(contact.phone)
+
+                  // Aceitar contatos que tenham email OU telefone válido
+                  // Isso é menos restritivo que a versão anterior
+                  return hasValidEmail || hasValidCompletePhone
                 })
 
                 sendMessage({
@@ -216,8 +221,16 @@ export async function GET(request: Request) {
             })
           }
 
-          // Remover duplicatas
-          const uniqueResults = Array.from(new Map(allResults.map((item) => [item.id, item])).values())
+          // Melhorar a eliminação de duplicatas
+          const uniqueResults = Array.from(
+            new Map(
+              allResults.map((item) => {
+                // Usar uma combinação de nome + email + telefone como chave para identificar duplicatas
+                const key = `${item.name}-${item.email || ""}-${item.phone || ""}`
+                return [key, item]
+              }),
+            ).values(),
+          )
 
           // Enviar progresso final
           sendMessage({

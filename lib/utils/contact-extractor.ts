@@ -99,13 +99,13 @@ export function formatPhone(phone: string): string {
     return `(${ddd}) ${firstPart}-${secondPart}`
   }
 
-  // Formatar sem DDD
+  // Formatar sem DDD - adicionar DDD padrão (00)
   if (digitsOnly.length === 9) {
-    return `${digitsOnly.substring(0, 5)}-${digitsOnly.substring(5)}`
+    return `(00) ${digitsOnly.substring(0, 5)}-${digitsOnly.substring(5)}`
   }
 
   if (digitsOnly.length === 8) {
-    return `${digitsOnly.substring(0, 4)}-${digitsOnly.substring(4)}`
+    return `(00) ${digitsOnly.substring(0, 4)}-${digitsOnly.substring(4)}`
   }
 
   // Se não conseguir formatar, retorna o original

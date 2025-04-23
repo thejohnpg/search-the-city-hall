@@ -54,14 +54,17 @@ export default function ContactTable({ contacts, isLoading }: ContactTableProps)
     loadFavorites()
   }, [])
 
-  // Filtrar contatos com base nos critérios
+  // Modificar a função de filtragem de contatos
   const filteredContacts = useMemo(() => {
     return contacts.filter((contact) => {
-      // Filtrar contatos que não têm email nem telefone válido
+      // Verificar se tem email válido
       const hasValidEmail = contact.email && contact.email.includes("@")
-      const hasValidPhone = contact.phone && /^($$\d{2}$$\s?)?\d{4,5}[-\s]?\d{4}$/.test(contact.phone)
 
-      if (!hasValidEmail && !hasValidPhone) return false
+      // Verificar se tem telefone válido com DDD
+      const hasValidCompletePhone = contact.phone && /^$$\d{2}$$\s\d{4,5}-\d{4}$/.test(contact.phone)
+
+      // Aceitar contatos que tenham email OU telefone válido
+      if (!hasValidEmail && !hasValidCompletePhone) return false
 
       // Filtrar por texto de busca
       if (searchFilter && !contactMatchesSearch(contact, searchFilter)) return false
@@ -104,14 +107,42 @@ export default function ContactTable({ contacts, isLoading }: ContactTableProps)
     return Array.from(states).sort()
   }, [contacts])
 
+  // Modificar a função handleToggleFavorite para salvar o contato no localStorage
   const handleToggleFavorite = async (id: string) => {
     try {
       const result = await toggleFavoriteContact(id)
       if (result.success) {
         if (favorites.includes(id)) {
           setFavorites(favorites.filter((favId) => favId !== id))
+
+          // Remover do localStorage se existir
+          const storedContacts = localStorage.getItem("favoriteContacts")
+          if (storedContacts) {
+            const contacts = JSON.parse(storedContacts) as Contact[]
+            const updatedContacts = contacts.filter((contact) => contact.id !== id)
+            localStorage.setItem("favoriteContacts", JSON.stringify(updatedContacts))
+          }
         } else {
           setFavorites([...favorites, id])
+
+          // Adicionar ao localStorage
+          const contactToSave = contacts.find((contact) => contact.id === id)
+          if (contactToSave) {
+            const storedContacts = localStorage.getItem("favoriteContacts")
+            let updatedContacts: Contact[] = []
+
+            if (storedContacts) {
+              updatedContacts = JSON.parse(storedContacts) as Contact[]
+              // Verificar se o contato já existe
+              if (!updatedContacts.some((contact) => contact.id === id)) {
+                updatedContacts.push(contactToSave)
+              }
+            } else {
+              updatedContacts = [contactToSave]
+            }
+
+            localStorage.setItem("favoriteContacts", JSON.stringify(updatedContacts))
+          }
         }
       }
     } catch (error) {
@@ -394,11 +425,13 @@ export default function ContactTable({ contacts, isLoading }: ContactTableProps)
 // Função auxiliar para verificar se um contato corresponde à busca
 function contactMatchesSearch(contact: Contact, search: string): boolean {
   const searchLower = search.toLowerCase()
-  return Boolean(
-    (contact.name && contact.name.toLowerCase().includes(searchLower)) ||
-    (contact.position && contact.position.toLowerCase().includes(searchLower)) ||
-    (contact.department && contact.department.toLowerCase().includes(searchLower)) ||
-    (contact.city && contact.city.toLowerCase().includes(searchLower)) ||
-    (contact.email && contact.email.toLowerCase().includes(searchLower))
-  )
+  
+  // Verificar propriedades antes de chamar métodos
+  const nameMatches = contact.name ? contact.name.toLowerCase().includes(searchLower) : false
+  const positionMatches = contact.position ? contact.position.toLowerCase().includes(searchLower) : false
+  const departmentMatches = contact.department ? contact.department.toLowerCase().includes(searchLower) : false
+  const cityMatches = contact.city ? contact.city.toLowerCase().includes(searchLower) : false
+  const emailMatches = contact.email ? contact.email.toLowerCase().includes(searchLower) : false
+  
+  return nameMatches || positionMatches || departmentMatches || cityMatches || emailMatches
 }

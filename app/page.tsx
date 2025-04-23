@@ -16,6 +16,8 @@ import SearchProgress, { type SearchLog } from "@/components/search-progress"
 import { getRecentSearches, saveSearch } from "@/lib/actions"
 import type { Contact, SearchHistoryItem } from "@/lib/types"
 import { brazilianStates } from "@/lib/utils/contact-extractor"
+// Importar o componente FavoritesTab
+import FavoritesTab from "@/components/favorites-tab"
 
 export default function Home() {
   const [searchTerm, setSearchTerm] = useState("")
@@ -101,10 +103,13 @@ export default function Home() {
             // Verificar se há resultados
             if (data.results && Array.isArray(data.results)) {
               // Filtrar contatos que não têm email nem telefone válido
-              const validContacts = data.results.filter((contact) => {
+              const validContacts = data.results.filter((contact: Contact) => {
                 const hasValidEmail = contact.email && contact.email.includes("@")
-                const hasValidPhone = contact.phone && /^($$\d{2}$$\s?)?\d{4,5}[-\s]?\d{4}$/.test(contact.phone)
-                return hasValidEmail || hasValidPhone
+                // Expressão regular corrigida para telefones com DDD
+                const hasValidCompletePhone = contact.phone && /^$$\d{2}$$\s\d{4,5}-\d{4}$/.test(contact.phone)
+
+                // Aceitar contatos que tenham email OU telefone válido
+                return hasValidEmail || hasValidCompletePhone
               })
 
               setContacts(validContacts)
@@ -272,14 +277,19 @@ export default function Home() {
         {/* Componente de progresso da busca */}
         <SearchProgress isSearching={isLoading} logs={searchLogs} />
 
+        {/* Adicionar a aba de favoritos na lista de abas */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-8">
           <TabsList>
             <TabsTrigger value="contatos">Contatos</TabsTrigger>
+            <TabsTrigger value="favoritos">Favoritos</TabsTrigger>
             <TabsTrigger value="historico">Histórico de Buscas</TabsTrigger>
             <TabsTrigger value="monitoramento">Monitoramento</TabsTrigger>
           </TabsList>
           <TabsContent value="contatos">
             <ContactTable contacts={contacts} isLoading={isLoading} />
+          </TabsContent>
+          <TabsContent value="favoritos">
+            <FavoritesTab />
           </TabsContent>
           <TabsContent value="historico">
             <SearchHistory

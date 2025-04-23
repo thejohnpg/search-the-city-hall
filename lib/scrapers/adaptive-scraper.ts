@@ -181,7 +181,7 @@ async function extractContactsFromUrls(
 
     try {
       // Usar um timeout mais curto para cada URL individual
-      const response = await axiosInstance.get(url, { timeout: 10000 })
+      const response = await axiosInstance.get(url, { timeout: 5000 })
       const $ = cheerio.load(response.data)
 
       // Buscar por elementos que possam conter informações de contato
@@ -221,8 +221,8 @@ async function extractContactsFromUrls(
             // Extrair departamento
             const department = inferDepartmentFromPosition(extractedPosition)
             // Verificar se tem pelo menos email ou telefone válido
-            const hasValidEmail = contactInfo?.emails?.length > 0 && contactInfo.emails[0]?.includes("@")
-            const hasValidPhone = contactInfo?.phones?.length > 0 && isValidBrazilianPhone(contactInfo.phones[0])
+            const hasValidEmail = contactInfo?.emails?.length > 0 && contactInfo?.emails[0]?.includes("@")
+            const hasValidPhone = contactInfo?.phones?.length > 0 && isValidBrazilianPhone(contactInfo?.phones[0])
 
             if (!hasValidEmail && !hasValidPhone) {
               return // Pular contatos sem informações de contato válidas
@@ -272,8 +272,8 @@ async function extractContactsFromUrls(
               const rowText = $(rowElement).text()
               const contactInfo = extractContactInfo(rowText)
               // Verificar se tem pelo menos email ou telefone válido
-              const hasValidEmail = contactInfo?.emails?.length > 0 && contactInfo.emails?.[0]?.includes("@")
-              const hasValidPhone = contactInfo?.phones?.length > 0 && isValidBrazilianPhone(contactInfo.phones?.[0])
+              const hasValidEmail = contactInfo?.emails?.length > 0 && contactInfo?.emails[0]?.includes("@")
+              const hasValidPhone = contactInfo?.phones?.length > 0 && isValidBrazilianPhone(contactInfo?.phones[0])
 
               if (!hasValidEmail && !hasValidPhone) {
                 return // Pular contatos sem informações de contato válidas
@@ -327,13 +327,89 @@ function mapPositionToText(position: string): string {
 
 // Melhorar a extração de telefones no scraper adaptativo
 
-// Atualizar a função isValidBrazilianPhone para ser mais flexível
+// Melhorar a função isValidBrazilianPhone para garantir que o telefone tenha DDD
 function isValidBrazilianPhone(phone: string): boolean {
   // Remove todos os caracteres não numéricos
   const cleanedPhone = phone.replace(/\D/g, "")
 
-  // Verifica se tem o número mínimo de dígitos para um telefone
-  if (cleanedPhone.length < 8) {
+  // Verifica se tem o número mínimo de dígitos para um telefone com DDD (10 ou 11 dígitos)
+  if (cleanedPhone.length < 10) {
+    return false
+  }
+
+  // Valida o DDD (código de área) - Lista de DDDs válidos no Brasil
+  const validDdds = [
+    "11",
+    "12",
+    "13",
+    "14",
+    "15",
+    "16",
+    "17",
+    "18",
+    "19",
+    "21",
+    "22",
+    "24",
+    "27",
+    "28",
+    "31",
+    "32",
+    "33",
+    "34",
+    "35",
+    "37",
+    "38",
+    "41",
+    "42",
+    "43",
+    "44",
+    "45",
+    "46",
+    "47",
+    "48",
+    "49",
+    "51",
+    "53",
+    "54",
+    "55",
+    "61",
+    "62",
+    "63",
+    "64",
+    "65",
+    "66",
+    "67",
+    "68",
+    "69",
+    "71",
+    "73",
+    "74",
+    "75",
+    "77",
+    "79",
+    "81",
+    "82",
+    "83",
+    "84",
+    "85",
+    "86",
+    "87",
+    "88",
+    "89",
+    "91",
+    "92",
+    "93",
+    "94",
+    "95",
+    "96",
+    "97",
+    "98",
+    "99",
+  ]
+
+  const ddd = cleanedPhone.substring(0, 2)
+  if (!validDdds.includes(ddd)) {
     return false
   }
 
@@ -341,26 +417,26 @@ function isValidBrazilianPhone(phone: string): boolean {
   return true
 }
 
-// Atualizar a função formatPhone para lidar com diferentes formatos
+// Melhorar a função formatPhone para garantir formatação consistente
 function formatPhone(phone: string): string {
   // Remove todos os caracteres não numéricos
   const cleanedPhone = phone.replace(/\D/g, "")
 
-  // Formatar com base no número de dígitos
+  // Se não tiver DDD, retornar vazio (não é um telefone válido para nosso caso)
+  if (cleanedPhone.length < 8) {
+    return ""
+  }
+
+  // Formatar o número no padrão brasileiro: (DDD) XXXX-XXXX ou (DDD) XXXXX-XXXX
   if (cleanedPhone.length >= 10) {
-    // Com DDD
     const ddd = cleanedPhone.substring(0, 2)
     const firstPart = cleanedPhone.length >= 11 ? cleanedPhone.substring(2, 7) : cleanedPhone.substring(2, 6)
     const secondPart = cleanedPhone.length >= 11 ? cleanedPhone.substring(7) : cleanedPhone.substring(6)
     return `(${ddd}) ${firstPart}-${secondPart}`
-  } else if (cleanedPhone.length === 9) {
-    // Celular sem DDD
-    return `${cleanedPhone.substring(0, 5)}-${cleanedPhone.substring(5)}`
-  } else if (cleanedPhone.length === 8) {
-    // Fixo sem DDD
-    return `${cleanedPhone.substring(0, 4)}-${cleanedPhone.substring(4)}`
+  } else {
+    // Se não tiver DDD, adicionar um DDD padrão (00)
+    const firstPart = cleanedPhone.length === 9 ? cleanedPhone.substring(0, 5) : cleanedPhone.substring(0, 4)
+    const secondPart = cleanedPhone.length === 9 ? cleanedPhone.substring(5) : cleanedPhone.substring(4)
+    return `(00) ${firstPart}-${secondPart}`
   }
-
-  // Se não conseguir formatar, retorna o original
-  return phone
 }
