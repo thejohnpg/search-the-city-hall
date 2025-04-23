@@ -15,6 +15,7 @@ import MonitoringPanel from "@/components/monitoring-panel"
 import SearchProgress, { type SearchLog } from "@/components/search-progress"
 import { getRecentSearches, saveSearch } from "@/lib/actions"
 import type { Contact, SearchHistoryItem } from "@/lib/types"
+import { brazilianStates } from "@/lib/utils/contact-extractor"
 
 export default function Home() {
   const [searchTerm, setSearchTerm] = useState("")
@@ -25,6 +26,7 @@ export default function Home() {
   const [searchHistory, setSearchHistory] = useState<SearchHistoryItem[]>([])
   const [activeTab, setActiveTab] = useState("contatos")
   const [searchLogs, setSearchLogs] = useState<SearchLog[]>([])
+  const [searchProgress, setSearchProgress] = useState(0)
   const { toast } = useToast()
 
   useEffect(() => {
@@ -68,6 +70,7 @@ export default function Home() {
     setSearchLogs([])
     setIsLoading(true)
     setContacts([]) // Limpar resultados anteriores
+    setSearchProgress(0) // Resetar progresso
 
     // Log inicial
     addSearchLog("Sistema", "Iniciando busca...", "info")
@@ -83,25 +86,45 @@ export default function Home() {
           const data = JSON.parse(event.data)
           if (data.type === "log") {
             addSearchLog(data.source, data.message, data.logType)
+          } else if (data.type === "progress") {
+            // Atualizar o progresso da barra
+            setSearchProgress(data.value)
+
+            // Disparar um evento personalizado para o componente SearchProgress
+            const progressEvent = new CustomEvent("search-progress", {
+              detail: { value: data.value },
+            })
+            window.dispatchEvent(progressEvent)
           } else if (data.type === "complete") {
             eventSource.close()
 
             // Verificar se há resultados
             if (data.results && Array.isArray(data.results)) {
-              setContacts(data.results)
+              // Filtrar contatos que não têm email nem telefone válido
+              const validContacts = data.results.filter((contact) => {
+                const hasValidEmail = contact.email && contact.email.includes("@")
+                const hasValidPhone = contact.phone && /^($$\d{2}$$\s?)?\d{4,5}[-\s]?\d{4}$/.test(contact.phone)
+                return hasValidEmail || hasValidPhone
+              })
+
+              setContacts(validContacts)
 
               // Log final
-              addSearchLog("Sistema", `Busca concluída. Encontrados ${data.results.length} contatos.`, "success")
+              addSearchLog(
+                "Sistema",
+                `Busca concluída. Encontrados ${validContacts.length} contatos válidos.`,
+                "success",
+              )
 
               // Salvar busca no histórico
-              if (data.results.length > 0) {
+              if (validContacts.length > 0) {
                 const searchData = {
                   query: searchTerm || "Todos",
                   filters: {
                     position: position !== "todos" ? position : "Todos",
                     state: state !== "todos" ? state : "Todos",
                   },
-                  results: data.results.length,
+                  results: validContacts.length,
                 }
 
                 saveSearch(searchData).then(async () => {
@@ -115,6 +138,7 @@ export default function Home() {
             }
 
             setIsLoading(false)
+            setSearchProgress(100) // Garantir que o progresso chegue a 100% ao finalizar
 
             toast({
               title: "Busca concluída",
@@ -191,15 +215,11 @@ export default function Home() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="todos">Todos os estados</SelectItem>
-                  <SelectItem value="SP">São Paulo</SelectItem>
-                  <SelectItem value="RJ">Rio de Janeiro</SelectItem>
-                  <SelectItem value="MG">Minas Gerais</SelectItem>
-                  <SelectItem value="RS">Rio Grande do Sul</SelectItem>
-                  <SelectItem value="PR">Paraná</SelectItem>
-                  <SelectItem value="BA">Bahia</SelectItem>
-                  <SelectItem value="SC">Santa Catarina</SelectItem>
-                  <SelectItem value="GO">Goiás</SelectItem>
-                  <SelectItem value="PE">Pernambuco</SelectItem>
+                  {brazilianStates.map((state) => (
+                    <SelectItem key={state.abbr} value={state.abbr}>
+                      {state.name} ({state.abbr})
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
 

@@ -1,4 +1,5 @@
 import type { Contact } from "@/lib/types"
+import { brazilianStates } from "@/lib/utils/contact-extractor"
 
 // Função para enviar eventos SSE (Server-Sent Events)
 export async function GET(request: Request) {
@@ -30,26 +31,36 @@ export async function GET(request: Request) {
 
           // Definir os domínios a serem pesquisados
           const domains = [
-            { name: "Prefeitura de São Paulo", url: "https://www.capital.sp.gov.br" },
-            { name: "Prefeitura do Rio de Janeiro", url: "https://www.rio.rj.gov.br" },
-            { name: "Prefeitura de Belo Horizonte", url: "https://prefeitura.pbh.gov.br" },
-            { name: "Portal da Transparência", url: "https://portaldatransparencia.gov.br" },
-            { name: "Diário Oficial", url: "https://www.in.gov.br" },
+            { name: "Prefeitura de São Paulo", url: "https://www.capital.sp.gov.br", state: "SP" },
+            { name: "Prefeitura do Rio de Janeiro", url: "https://www.rio.rj.gov.br", state: "RJ" },
+            { name: "Prefeitura de Belo Horizonte", url: "https://prefeitura.pbh.gov.br", state: "MG" },
+            { name: "Prefeitura de Salvador", url: "https://www.salvador.ba.gov.br", state: "BA" },
+            { name: "Prefeitura de Fortaleza", url: "https://www.fortaleza.ce.gov.br", state: "CE" },
+            { name: "Prefeitura de Recife", url: "https://www2.recife.pe.gov.br", state: "PE" },
+            { name: "Prefeitura de Porto Alegre", url: "https://prefeitura.poa.br", state: "RS" },
+            { name: "Prefeitura de Curitiba", url: "https://www.curitiba.pr.gov.br", state: "PR" },
+            { name: "Prefeitura de Manaus", url: "https://www.manaus.am.gov.br", state: "AM" },
+            { name: "Prefeitura de Goiânia", url: "https://www.goiania.go.gov.br", state: "GO" },
+            { name: "Portal da Transparência", url: "https://portaldatransparencia.gov.br", state: "BR" },
+            { name: "Diário Oficial", url: "https://www.in.gov.br", state: "BR" },
           ]
 
           // Filtrar domínios por estado se necessário
           const filteredDomains =
             state !== "todos"
               ? domains.filter((d) => {
-                  if (state === "SP" && d.name.includes("São Paulo")) return true
-                  if (state === "RJ" && d.name.includes("Rio de Janeiro")) return true
-                  if (state === "MG" && d.name.includes("Belo Horizonte")) return true
-                  return !d.name.includes("Prefeitura") // Manter portais nacionais
+                  if (d.state === state) return true
+                  if (d.state === "BR") return true // Manter portais nacionais
+                  return false
                 })
               : domains
 
           // Resultados combinados
           let allResults: Contact[] = []
+
+          // Total de domínios para calcular o progresso
+          const totalDomains = filteredDomains.length
+          let processedDomains = 0
 
           // Processar cada domínio
           for (const domain of filteredDomains) {
@@ -58,6 +69,12 @@ export async function GET(request: Request) {
               source: domain.name,
               message: `Iniciando busca em ${domain.name}...`,
               logType: "info",
+            })
+
+            // Atualizar progresso - Enviar progresso inicial para este domínio
+            sendMessage({
+              type: "progress",
+              value: Math.round((processedDomains / totalDomains) * 100),
             })
 
             try {
@@ -78,8 +95,21 @@ export async function GET(request: Request) {
                   message: `Erro ao extrair URLs: ${urlError}`,
                   logType: "error",
                 })
+                processedDomains++
+
+                // Atualizar progresso após cada domínio processado, mesmo com erro
+                sendMessage({
+                  type: "progress",
+                  value: Math.round((processedDomains / totalDomains) * 100),
+                })
                 continue
               }
+
+              // Atualizar progresso após extrair URLs (25% do progresso deste domínio)
+              sendMessage({
+                type: "progress",
+                value: Math.round(((processedDomains + 0.25) / totalDomains) * 100),
+              })
 
               sendMessage({
                 type: "log",
@@ -97,6 +127,12 @@ export async function GET(request: Request) {
                   logType: "info",
                 })
 
+                // Atualizar progresso após iniciar extração de contatos (50% do progresso deste domínio)
+                sendMessage({
+                  type: "progress",
+                  value: Math.round(((processedDomains + 0.5) / totalDomains) * 100),
+                })
+
                 const { contacts, error: contactError } = await scrapeWithAdaptiveUrls(
                   domain.url,
                   query,
@@ -111,11 +147,28 @@ export async function GET(request: Request) {
                     message: `Erro ao extrair contatos: ${contactError}`,
                     logType: "error",
                   })
+                  processedDomains++
+
+                  // Atualizar progresso após cada domínio processado, mesmo com erro
+                  sendMessage({
+                    type: "progress",
+                    value: Math.round((processedDomains / totalDomains) * 100),
+                  })
                   continue
                 }
 
-                // Filtrar contatos que não têm email nem telefone
-                const validContacts = contacts.filter((contact) => contact.email || contact.phone)
+                // Atualizar progresso após extrair contatos (75% do progresso deste domínio)
+                sendMessage({
+                  type: "progress",
+                  value: Math.round(((processedDomains + 0.75) / totalDomains) * 100),
+                })
+
+                // Filtrar contatos que não têm email nem telefone válido
+                const validContacts = contacts.filter((contact) => {
+                  const hasValidEmail = contact.email && contact.email.includes("@")
+                  const hasValidPhone = contact.phone && /^($$\d{2}$$\s?)?\d{4,5}[-\s]?\d{4}$/.test(contact.phone)
+                  return hasValidEmail || hasValidPhone
+                })
 
                 sendMessage({
                   type: "log",
@@ -141,6 +194,15 @@ export async function GET(request: Request) {
                 logType: "error",
               })
             }
+
+            // Incrementar contador de domínios processados
+            processedDomains++
+
+            // Atualizar progresso após cada domínio processado completamente
+            sendMessage({
+              type: "progress",
+              value: Math.round((processedDomains / totalDomains) * 100),
+            })
           }
 
           // Adicionar alguns resultados simulados para garantir que sempre haja algo para mostrar
@@ -157,7 +219,20 @@ export async function GET(request: Request) {
           // Remover duplicatas
           const uniqueResults = Array.from(new Map(allResults.map((item) => [item.id, item])).values())
 
+          // Enviar progresso final
+          sendMessage({
+            type: "progress",
+            value: 100,
+          })
+
           // Enviar resultados finais
+          sendMessage({
+            type: "log",
+            source: "Sistema",
+            message: `Busca concluída. Encontrados ${uniqueResults.length} contatos.`,
+            logType: "success",
+          })
+
           sendMessage({
             type: "complete",
             results: uniqueResults,
@@ -194,64 +269,72 @@ export async function GET(request: Request) {
 function generateSimulatedResults(query: string, position: string, state: string): Contact[] {
   const results: Contact[] = []
 
-  // Secretário de Educação
-  results.push({
-    id: "sim-1",
-    name: "Carlos Eduardo Silva",
-    position: "Secretário Municipal de Educação",
-    city: "São Paulo",
-    state: "SP",
-    email: "carlos.silva@educacao.sp.gov.br",
-    phone: "(11) 3396-0200",
-    department: "Secretaria Municipal de Educação",
-    lastUpdated: new Date().toISOString().split("T")[0],
-    source: "Dados Simulados",
-    sourceUrl: "https://educacao.sme.prefeitura.sp.gov.br/",
-  })
+  // Lista de estados para gerar resultados simulados
+  const states = state !== "todos" ? [state] : ["SP", "RJ", "MG", "RS", "PR", "BA", "SC", "GO", "PE"]
 
-  // Secretário de Trabalho
-  results.push({
-    id: "sim-2",
-    name: "Mariana Oliveira",
-    position: "Secretária Municipal de Trabalho",
-    city: "Rio de Janeiro",
-    state: "RJ",
-    email: "mariana.oliveira@trabalho.rio.gov.br",
-    phone: "(21) 2976-1500",
-    department: "Secretaria Municipal de Trabalho e Renda",
-    lastUpdated: new Date().toISOString().split("T")[0],
-    source: "Dados Simulados",
-    sourceUrl: "https://trabalho.prefeitura.rio/",
-  })
+  // Gerar contatos para cada estado
+  states.forEach((stateCode) => {
+    const stateName = brazilianStates.find((s) => s.abbr === stateCode)?.name || stateCode
 
-  // Diretor de TI
-  results.push({
-    id: "sim-3",
-    name: "Roberto Almeida",
-    position: "Diretor de Tecnologia da Informação",
-    city: "Belo Horizonte",
-    state: "MG",
-    email: "roberto.almeida@pbh.gov.br",
-    phone: "(31) 3277-4000",
-    department: "Secretaria Municipal de Administração",
-    lastUpdated: new Date().toISOString().split("T")[0],
-    source: "Dados Simulados",
-    sourceUrl: "https://prefeitura.pbh.gov.br/",
-  })
+    // Secretário de Educação
+    results.push({
+      id: `sim-edu-${stateCode}`,
+      name: `Carlos Eduardo Silva (${stateCode})`,
+      position: "Secretário Municipal de Educação",
+      city: stateName,
+      state: stateCode,
+      email: `carlos.silva@educacao.${stateCode.toLowerCase()}.gov.br`,
+      phone: `(${getRandomDDD(stateCode)}) ${getRandomNumber(4)}-${getRandomNumber(4)}`,
+      department: "Secretaria Municipal de Educação",
+      lastUpdated: new Date().toISOString().split("T")[0],
+      source: "Dados Simulados",
+      sourceUrl: `https://educacao.${stateCode.toLowerCase()}.gov.br/`,
+    })
 
-  // Diretor de Compras
-  results.push({
-    id: "sim-4",
-    name: "Fernanda Santos",
-    position: "Diretora de Compras",
-    city: "Curitiba",
-    state: "PR",
-    email: "fernanda.santos@curitiba.pr.gov.br",
-    phone: "(41) 3350-8484",
-    department: "Secretaria Municipal de Administração",
-    lastUpdated: new Date().toISOString().split("T")[0],
-    source: "Dados Simulados",
-    sourceUrl: "https://www.curitiba.pr.gov.br/",
+    // Secretário de Trabalho
+    results.push({
+      id: `sim-trab-${stateCode}`,
+      name: `Mariana Oliveira (${stateCode})`,
+      position: "Secretária Municipal de Trabalho",
+      city: stateName,
+      state: stateCode,
+      email: `mariana.oliveira@trabalho.${stateCode.toLowerCase()}.gov.br`,
+      phone: `(${getRandomDDD(stateCode)}) ${getRandomNumber(4)}-${getRandomNumber(4)}`,
+      department: "Secretaria Municipal de Trabalho e Renda",
+      lastUpdated: new Date().toISOString().split("T")[0],
+      source: "Dados Simulados",
+      sourceUrl: `https://trabalho.${stateCode.toLowerCase()}.gov.br/`,
+    })
+
+    // Diretor de TI
+    results.push({
+      id: `sim-ti-${stateCode}`,
+      name: `Roberto Almeida (${stateCode})`,
+      position: "Diretor de Tecnologia da Informação",
+      city: stateName,
+      state: stateCode,
+      email: `roberto.almeida@ti.${stateCode.toLowerCase()}.gov.br`,
+      phone: `(${getRandomDDD(stateCode)}) ${getRandomNumber(4)}-${getRandomNumber(4)}`,
+      department: "Secretaria Municipal de Administração",
+      lastUpdated: new Date().toISOString().split("T")[0],
+      source: "Dados Simulados",
+      sourceUrl: `https://administracao.${stateCode.toLowerCase()}.gov.br/`,
+    })
+
+    // Diretor de Compras
+    results.push({
+      id: `sim-comp-${stateCode}`,
+      name: `Fernanda Santos (${stateCode})`,
+      position: "Diretora de Compras",
+      city: stateName,
+      state: stateCode,
+      email: `fernanda.santos@compras.${stateCode.toLowerCase()}.gov.br`,
+      phone: `(${getRandomDDD(stateCode)}) ${getRandomNumber(4)}-${getRandomNumber(4)}`,
+      department: "Secretaria Municipal de Administração",
+      lastUpdated: new Date().toISOString().split("T")[0],
+      source: "Dados Simulados",
+      sourceUrl: `https://compras.${stateCode.toLowerCase()}.gov.br/`,
+    })
   })
 
   // Filtrar resultados com base nos parâmetros
@@ -287,4 +370,32 @@ function generateSimulatedResults(query: string, position: string, state: string
 
     return true
   })
+}
+
+// Função para obter um DDD aleatório com base no estado
+function getRandomDDD(state: string): string {
+  const ddds: Record<string, string[]> = {
+    SP: ["11", "12", "13", "14", "15", "16", "17", "18", "19"],
+    RJ: ["21", "22", "24"],
+    MG: ["31", "32", "33", "34", "35", "37", "38"],
+    RS: ["51", "53", "54", "55"],
+    PR: ["41", "42", "43", "44", "45", "46"],
+    BA: ["71", "73", "74", "75", "77"],
+    SC: ["47", "48", "49"],
+    GO: ["62", "64"],
+    PE: ["81", "87"],
+    // Adicionar outros estados conforme necessário
+  }
+
+  const stateDDDs = ddds[state] || ["00"]
+  return stateDDDs[Math.floor(Math.random() * stateDDDs.length)]
+}
+
+// Função para gerar um número de telefone aleatório
+function getRandomNumber(length: number): string {
+  let result = ""
+  for (let i = 0; i < length; i++) {
+    result += Math.floor(Math.random() * 10)
+  }
+  return result
 }

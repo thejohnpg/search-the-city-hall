@@ -181,7 +181,7 @@ async function extractContactsFromUrls(
 
     try {
       // Usar um timeout mais curto para cada URL individual
-      const response = await axiosInstance.get(url, { timeout: 5000 })
+      const response = await axiosInstance.get(url, { timeout: 10000 })
       const $ = cheerio.load(response.data)
 
       // Buscar por elementos que possam conter informações de contato
@@ -220,11 +220,16 @@ async function extractContactsFromUrls(
 
             // Extrair departamento
             const department = inferDepartmentFromPosition(extractedPosition)
+            // Verificar se tem pelo menos email ou telefone válido
+            const hasValidEmail = contactInfo?.emails?.length > 0 && contactInfo.emails[0]?.includes("@")
+            const hasValidPhone = contactInfo?.phones?.length > 0 && isValidBrazilianPhone(contactInfo.phones[0])
 
-            // Verificar se tem pelo menos email ou telefone
-            if (!contactInfo.emails.length && !contactInfo.phones.length) {
-              return // Pular contatos sem informações de contato
+            if (!hasValidEmail && !hasValidPhone) {
+              return // Pular contatos sem informações de contato válidas
             }
+
+            // Formatar telefone se existir
+            const phone = contactInfo.phones.length > 0 ? formatPhone(contactInfo.phones[0]) : undefined
 
             // Gerar ID único
             const id = `adaptive-${baseUrl.replace(/[^\w]/g, "-")}-${nameIndex}-${name.replace(/\s/g, "-").toLowerCase()}`
@@ -236,8 +241,8 @@ async function extractContactsFromUrls(
               position: normalizePosition(extractedPosition),
               city,
               state,
-              email: contactInfo.emails[0] || undefined,
-              phone: contactInfo.phones[0] || undefined,
+              email: hasValidEmail ? contactInfo.emails[0] : undefined,
+              phone: hasValidPhone ? phone : undefined,
               department,
               lastUpdated: new Date().toISOString().split("T")[0],
               source: `Site ${new URL(baseUrl).hostname}`,
@@ -266,11 +271,16 @@ async function extractContactsFromUrls(
               // Extrair email e telefone
               const rowText = $(rowElement).text()
               const contactInfo = extractContactInfo(rowText)
+              // Verificar se tem pelo menos email ou telefone válido
+              const hasValidEmail = contactInfo?.emails?.length > 0 && contactInfo.emails?.[0]?.includes("@")
+              const hasValidPhone = contactInfo?.phones?.length > 0 && isValidBrazilianPhone(contactInfo.phones?.[0])
 
-              // Verificar se tem pelo menos email ou telefone
-              if (!contactInfo.emails.length && !contactInfo.phones.length) {
-                return // Pular contatos sem informações de contato
+              if (!hasValidEmail && !hasValidPhone) {
+                return // Pular contatos sem informações de contato válidas
               }
+
+              // Formatar telefone se existir
+              const phone = contactInfo.phones.length > 0 ? formatPhone(contactInfo.phones[0]) : undefined
 
               // Gerar ID único
               const id = `adaptive-table-${baseUrl.replace(/[^\w]/g, "-")}-${rowIndex}-${name.replace(/\s/g, "-").toLowerCase()}`
@@ -282,8 +292,8 @@ async function extractContactsFromUrls(
                 position: normalizePosition(extractedPosition),
                 city,
                 state,
-                email: contactInfo.emails[0] || undefined,
-                phone: contactInfo.phones[0] || undefined,
+                email: hasValidEmail ? contactInfo.emails[0] : undefined,
+                phone: hasValidPhone ? phone : undefined,
                 department: inferDepartmentFromPosition(extractedPosition),
                 lastUpdated: new Date().toISOString().split("T")[0],
                 source: `Site ${new URL(baseUrl).hostname}`,
@@ -313,4 +323,44 @@ function mapPositionToText(position: string): string {
   }
 
   return mapping[position] || position
+}
+
+// Melhorar a extração de telefones no scraper adaptativo
+
+// Atualizar a função isValidBrazilianPhone para ser mais flexível
+function isValidBrazilianPhone(phone: string): boolean {
+  // Remove todos os caracteres não numéricos
+  const cleanedPhone = phone.replace(/\D/g, "")
+
+  // Verifica se tem o número mínimo de dígitos para um telefone
+  if (cleanedPhone.length < 8) {
+    return false
+  }
+
+  // Se passou por todas as validações, é um número de telefone brasileiro válido
+  return true
+}
+
+// Atualizar a função formatPhone para lidar com diferentes formatos
+function formatPhone(phone: string): string {
+  // Remove todos os caracteres não numéricos
+  const cleanedPhone = phone.replace(/\D/g, "")
+
+  // Formatar com base no número de dígitos
+  if (cleanedPhone.length >= 10) {
+    // Com DDD
+    const ddd = cleanedPhone.substring(0, 2)
+    const firstPart = cleanedPhone.length >= 11 ? cleanedPhone.substring(2, 7) : cleanedPhone.substring(2, 6)
+    const secondPart = cleanedPhone.length >= 11 ? cleanedPhone.substring(7) : cleanedPhone.substring(6)
+    return `(${ddd}) ${firstPart}-${secondPart}`
+  } else if (cleanedPhone.length === 9) {
+    // Celular sem DDD
+    return `${cleanedPhone.substring(0, 5)}-${cleanedPhone.substring(5)}`
+  } else if (cleanedPhone.length === 8) {
+    // Fixo sem DDD
+    return `${cleanedPhone.substring(0, 4)}-${cleanedPhone.substring(4)}`
+  }
+
+  // Se não conseguir formatar, retorna o original
+  return phone
 }

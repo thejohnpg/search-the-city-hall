@@ -22,28 +22,30 @@ export interface SearchLog {
 export default function SearchProgress({ isSearching, logs }: SearchProgressProps) {
   const [progress, setProgress] = useState(0)
 
-  // Simular progresso durante a busca
+  // Atualizar o progresso quando receber eventos do servidor
   useEffect(() => {
-    if (isSearching) {
-      const interval = setInterval(() => {
-        setProgress((prev) => {
-          // Aumentar gradualmente até 95% (os últimos 5% serão quando a busca terminar)
-          if (prev < 95) {
-            return prev + 1
-          }
-          return prev
-        })
-      }, 300)
-
-      return () => {
-        clearInterval(interval)
-        // Quando a busca terminar, definir como 100%
-        setProgress(100)
+    // Escutar eventos de progresso do servidor
+    const handleProgressEvent = (event: CustomEvent) => {
+      if (event.detail && typeof event.detail.value === "number") {
+        setProgress(event.detail.value)
       }
-    } else if (logs.length > 0) {
+    }
+
+    // Registrar o ouvinte de eventos
+    window.addEventListener("search-progress", handleProgressEvent as EventListener)
+
+    // Limpar o ouvinte quando o componente for desmontado
+    return () => {
+      window.removeEventListener("search-progress", handleProgressEvent as EventListener)
+    }
+  }, [])
+
+  // Resetar o progresso quando a busca terminar
+  useEffect(() => {
+    if (!isSearching && logs.length > 0) {
       // Busca concluída
       setProgress(100)
-    } else {
+    } else if (!isSearching && logs.length === 0) {
       // Nenhuma busca em andamento ou concluída
       setProgress(0)
     }

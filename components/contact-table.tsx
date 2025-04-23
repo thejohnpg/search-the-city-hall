@@ -57,8 +57,11 @@ export default function ContactTable({ contacts, isLoading }: ContactTableProps)
   // Filtrar contatos com base nos critérios
   const filteredContacts = useMemo(() => {
     return contacts.filter((contact) => {
-      // Filtrar apenas contatos que tenham pelo menos email ou telefone
-      if (!contact.email && !contact.phone) return false
+      // Filtrar contatos que não têm email nem telefone válido
+      const hasValidEmail = contact.email && contact.email.includes("@")
+      const hasValidPhone = contact.phone && /^($$\d{2}$$\s?)?\d{4,5}[-\s]?\d{4}$/.test(contact.phone)
+
+      if (!hasValidEmail && !hasValidPhone) return false
 
       // Filtrar por texto de busca
       if (searchFilter && !contactMatchesSearch(contact, searchFilter)) return false
@@ -195,15 +198,18 @@ export default function ContactTable({ contacts, isLoading }: ContactTableProps)
       <CardContent>
         <div className="mb-4 flex flex-col md:flex-row gap-4">
           <div className="flex-1">
-            <Input
-              placeholder="Filtrar por nome, cargo ou departamento..."
-              value={searchFilter}
-              onChange={(e) => {
-                setSearchFilter(e.target.value)
-                setPage(1) // Voltar para a primeira página ao filtrar
-              }}
-              className="w-full"
-            />
+            <div className="relative">
+              <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+              <Input
+                placeholder="Filtrar por nome, cargo ou departamento..."
+                value={searchFilter}
+                onChange={(e) => {
+                  setSearchFilter(e.target.value)
+                  setPage(1) // Voltar para a primeira página ao filtrar
+                }}
+                className="w-full pl-8"
+              />
+            </div>
           </div>
           <Select
             value={stateFilter}

@@ -159,7 +159,7 @@ export default function ContactList({ contacts, isLoading }: ContactListProps) {
                     {contact.phone && (
                       <div className="flex items-center">
                         <Phone className="h-4 w-4 mr-2 text-gray-400" />
-                        <a href={`tel:${contact.phone}`} className="text-blue-600 hover:underline">
+                        <a href={`tel:${contact.phone.replace(/\D/g, "")}`} className="text-blue-600 hover:underline">
                           {contact.phone}
                         </a>
                       </div>
